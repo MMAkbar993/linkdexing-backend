@@ -130,7 +130,27 @@ exports.captureOrder = async (req, res, next) => {
       return res.json({ ok: true, balance: await credits.getBalance(req.user.id) });
     }
 
-    const capture = await paypal.captureOrder(paypalOrderId);
+    let capture;
+    try {
+      capture = await paypal.captureOrder(paypalOrderId);
+    } catch (err) {
+      // A failure calling PayPal itself (declined, expired order, PayPal
+      // outage, etc.) - log the real detail server-side, but never leak an
+      // internal error string like "Request failed with status code ___" to
+      // the client.
+      console.error(
+        "PayPal capture failed for order",
+        paypalOrderId,
+        err.response?.data || err.message
+      );
+      payment.paymentStatus = "failed";
+      payment.rawCapture = err.response?.data || { error: err.message };
+      await payment.save();
+      return res.status(402).json({
+        ok: false,
+        message: "PayPal could not complete this payment. Please try again.",
+      });
+    }
 
     if (capture.status !== "COMPLETED") {
       payment.paymentStatus = "failed";

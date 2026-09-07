@@ -41,8 +41,14 @@ async function authedRequest(method, path, body) {
   const { data } = await axios({
     method,
     url: `${BASE_URL}${path}`,
-    data: body,
-    headers: { Authorization: `Bearer ${token}` },
+    // PayPal's API requires this header on every call, even ones with no
+    // body (e.g. capture) - omitting it gets the request rejected with a
+    // real 415 from PayPal itself.
+    data: body || {},
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
   });
   return data;
 }
