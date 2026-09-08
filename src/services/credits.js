@@ -36,9 +36,18 @@ async function applyCredits(
       query.creditBalance = { $gte: -delta };
     }
 
+    // creditsPurchased is a lifetime counter - it only ever goes up, on any
+    // positive grant (PayPal purchase or manual admin add), and is never
+    // reduced when credits are spent. That's what makes it different from
+    // creditBalance, which is the current spendable amount.
+    const inc = { creditBalance: delta };
+    if (delta > 0) {
+      inc.creditsPurchased = delta;
+    }
+
     const user = await User.findOneAndUpdate(
       query,
-      { $inc: { creditBalance: delta } },
+      { $inc: inc },
       { new: true, session: activeSession }
     );
 

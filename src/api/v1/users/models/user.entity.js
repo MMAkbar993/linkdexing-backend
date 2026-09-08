@@ -40,6 +40,15 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Lifetime total of every credit ever granted (PayPal purchases + manual
+    // admin additions) - unlike creditBalance, this only ever goes up, so it
+    // stays meaningful after the balance has been spent down. Kept in sync
+    // alongside creditBalance by src/services/credits.js.
+    creditsPurchased: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     forgotPasswordToken: {
       type: String,
     },

@@ -320,16 +320,22 @@ exports.getMyCredits = async (req, res, next) => {
   try {
     const { id } = req.user;
 
-    const [balance, transactions] = await Promise.all([
-      credits.getBalance(id),
+    const [user, transactions] = await Promise.all([
+      User.findById(id).select("creditBalance creditsPurchased totalLinks"),
       CreditTransaction.find({ userId: id })
         .sort({ createdAt: -1 })
         .limit(50),
     ]);
 
+    if (!user) {
+      return res.status(404).json({ ok: false, message: "User not found" });
+    }
+
     return res.json({
       ok: true,
-      balance,
+      balance: user.creditBalance,
+      creditsPurchased: user.creditsPurchased,
+      totalLinks: user.totalLinks,
       transactions,
     });
   } catch (err) {
