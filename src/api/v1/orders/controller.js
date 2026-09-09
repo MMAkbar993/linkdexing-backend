@@ -193,6 +193,61 @@ exports.getOrderLinks = async (req, res, next) => {
   }
 };
 
+// Admin "Submissions" view: every order created on one calendar day (UTC),
+// with the submitting user and link count — e.g. "who submitted how many
+// links, and over how many drip-feed days, on 9/8/26". Relies on the
+// createdAt index on the Order schema to stay fast at 100k+ rows.
+exports.getOrdersByDate = async (req, res, next) => {
+  try {
+    const { date } = req.params;
+
+    const start = new Date(`${date}T00:00:00.000Z`);
+    if (Number.isNaN(start.getTime())) {
+      return res.status(400).json({
+        ok: false,
+        message: "date must be in YYYY-MM-DD format",
+      });
+    }
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+    const orders = await Order.find({
+      createdAt: { $gte: start, $lt: end },
+    })
+      .populate("userId", "name email")
+      .sort({ createdAt: -1 });
+
+    const submissions = orders.map((order) => {
+      const linkCount = (order.links || "")
+        .split("\n")
+        .map((url) => url.trim())
+        .filter(Boolean).length;
+
+      return {
+        orderId: order._id,
+        user: order.userId
+          ? { name: order.userId.name, email: order.userId.email }
+          : null,
+        linkCount,
+        dripfeed: order.dripfeed,
+        isProcessed: order.isProcessed,
+        createdAt: order.createdAt,
+      };
+    });
+
+    // Highest link count first, matching how the Users list is sorted.
+    submissions.sort((a, b) => b.linkCount - a.linkCount);
+
+    return res.json({
+      ok: true,
+      date,
+      submissions,
+      totalLinks: submissions.reduce((sum, s) => sum + s.linkCount, 0),
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 exports.getOrdersByDripfeed = async (req, res, next) => {
   try {
     const { dripfeed } = req.params;

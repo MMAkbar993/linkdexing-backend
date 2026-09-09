@@ -5,6 +5,7 @@ const {
   getOrders,
   getOrderLinks,
   getOrdersByDripfeed,
+  getOrdersByDate,
   processOrder,
 } = require("./controller");
 
@@ -16,6 +17,8 @@ const router = require("express").Router();
 router.get("/all", checkAuthStatus, requireAdmin, getOrders);
 
 router.get("/dripfeed/:dripfeed", checkAuthStatus, requireAdmin, getOrdersByDripfeed);
+
+router.get("/by-date/:date", checkAuthStatus, requireAdmin, getOrdersByDate);
 
 router.post("/process", checkAuthStatus, requireAdmin, processOrder);
 
