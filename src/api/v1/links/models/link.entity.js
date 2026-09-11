@@ -43,7 +43,7 @@ const linkSchema = new mongoose.Schema(
     // collections. "not_checked" until the user runs a check at least once.
     indexStatus: {
       type: String,
-      enum: ["not_checked", "pending", "indexed", "not_indexed"],
+      enum: ["not_checked", "pending", "indexed", "not_indexed", "unmatched"],
       default: "not_checked",
     },
     indexCheckedAt: { type: Date },

@@ -6,6 +6,12 @@ const credits = require("../../../services/credits");
 
 const DEFAULT_PAGE_SIZE = 50;
 const USER_SCOPED_PAGE_SIZE = 200;
+// Same shape as frontend/src/utils/csv.js's URL_LIKE - kept in sync by hand,
+// since the two apps don't share code. Rejecting non-URLs here (not just in
+// the form) matters because IndexChecker.link still "checks" malformed
+// input rather than erroring on it, and the result can never be matched
+// back to the original string - see indexCheckPoller.js's "unmatched" state.
+const URL_LIKE = /^(https?:\/\/|www\.)\S+$/i;
 
 function parsePaging(query, defaultLimit) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -31,6 +37,14 @@ exports.createOrder = async (req, res, next) => {
     return res.status(400).json({
       ok: false,
       message: "At least one link is required",
+    });
+  }
+
+  const invalid = urls.filter((url) => !URL_LIKE.test(url));
+  if (invalid.length > 0) {
+    return res.status(400).json({
+      ok: false,
+      message: `Every line must be a full URL, starting with http://, https://, or www. (${invalid.length} line(s) didn't match)`,
     });
   }
 

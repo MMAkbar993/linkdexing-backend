@@ -30,9 +30,15 @@ const indexCheckSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // "unmatched": the batch finished on IndexChecker.link's side but this
+    // specific URL's result could never be matched back (their API can
+    // normalize malformed input - e.g. adding "http://" to a non-URL string
+    // - so the key they return doesn't always equal what was submitted).
+    // Used so a row is never stuck showing "pending" forever once the batch
+    // itself is done.
     result: {
       type: String,
-      enum: ["pending", "indexed", "not_indexed"],
+      enum: ["pending", "indexed", "not_indexed", "unmatched"],
       default: "pending",
     },
     source: {

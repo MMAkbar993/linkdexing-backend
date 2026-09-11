@@ -106,6 +106,30 @@ async function applyProjectResult(batch) {
     }
   }
 
+  // Their aggregate says done (pending: 0) can be true even though some of
+  // our rows never found a matching key above (see the enum comment on
+  // IndexCheck.result) - normalized input is the known case, but treat any
+  // mismatch the same way: resolve it to "unmatched" rather than leaving it
+  // on "pending" forever once there's nothing left to wait for.
+  if (statistics.pending === 0) {
+    for (const check of checks) {
+      const alreadyHandled = bulkOps.some((op) =>
+        op.updateOne.filter._id.equals(check._id)
+      );
+      if (alreadyHandled || check.result !== "pending") continue;
+
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: check._id },
+          update: { result: "unmatched", checkedAt: new Date() },
+        },
+      });
+      if (check.linkId) {
+        linkUpdates.push({ linkId: check.linkId, indexStatus: "unmatched" });
+      }
+    }
+  }
+
   if (bulkOps.length > 0) {
     await IndexCheck.bulkWrite(bulkOps);
   }
