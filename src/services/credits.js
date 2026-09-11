@@ -18,14 +18,24 @@ class InsufficientCreditsError extends Error {
 // `options.session` if one is given — so it can be combined with other
 // writes in the same transaction (e.g. creating an order) — otherwise opens
 // and commits its own.
+// Credits are usually whole numbers (1 credit = 1 link submission), but the
+// index checker prices at 0.1 credit/URL, so this accepts any amount to two
+// decimal places rather than integers only. Rounded here, once, before it
+// ever reaches Mongo, so repeated fractional charges don't accumulate
+// floating-point noise (0.1 + 0.2 style drift) in the stored balance.
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
 async function applyCredits(
   userId,
   delta,
   type,
   { reason, adminId, session } = {}
 ) {
-  if (!Number.isInteger(delta) || delta === 0) {
-    throw new Error("delta must be a non-zero integer");
+  delta = round2(delta);
+  if (!Number.isFinite(delta) || delta === 0) {
+    throw new Error("delta must be a non-zero number");
   }
 
   const run = async (activeSession) => {
@@ -91,15 +101,15 @@ async function applyCredits(
 }
 
 function debit(userId, amount, type, opts) {
-  if (!Number.isInteger(amount) || amount <= 0) {
-    throw new Error("amount must be a positive integer");
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("amount must be a positive number");
   }
   return applyCredits(userId, -amount, type, opts);
 }
 
 function credit(userId, amount, type, opts) {
-  if (!Number.isInteger(amount) || amount <= 0) {
-    throw new Error("amount must be a positive integer");
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("amount must be a positive number");
   }
   return applyCredits(userId, amount, type, opts);
 }

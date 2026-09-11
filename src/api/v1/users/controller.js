@@ -358,10 +358,10 @@ exports.adjustCredits = async (req, res, next) => {
     const { id } = req.params;
     const { amount, reason } = req.body;
 
-    if (!Number.isInteger(amount) || amount === 0) {
+    if (!Number.isFinite(amount) || amount === 0) {
       return res.status(400).json({
         ok: false,
-        message: "amount must be a non-zero integer",
+        message: "amount must be a non-zero number",
       });
     }
 

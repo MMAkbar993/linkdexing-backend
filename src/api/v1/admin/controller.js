@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const Admin = require("./models/admin.entity");
 const { logAction } = require("../../../services/audit");
+const settings = require("../../../services/settings");
 
 exports.isAuthenticated = async (req, res) => {
   if (req.admin) {
@@ -194,6 +195,47 @@ exports.checkAuthStatus = async (req, res, next) => {
       ok: false,
       message: "Invalid token",
     });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// Admin-adjustable site settings — currently just the index-check price.
+// See routes.js for the isAdmin gate.
+exports.getSettings = async (req, res, next) => {
+  try {
+    const doc = await settings.getSettings();
+    return res.json({ ok: true, settings: doc });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+exports.updateSettings = async (req, res, next) => {
+  try {
+    const { costPerIndexCheck } = req.body;
+
+    if (costPerIndexCheck !== undefined) {
+      if (!Number.isFinite(costPerIndexCheck) || costPerIndexCheck < 0) {
+        return res.status(400).json({
+          ok: false,
+          message: "costPerIndexCheck must be a non-negative number",
+        });
+      }
+    }
+
+    const doc = await settings.updateSettings({
+      ...(costPerIndexCheck !== undefined ? { costPerIndexCheck } : {}),
+    });
+
+    await logAction({
+      actorType: "admin",
+      actorId: req.admin?.id,
+      action: "settings.updated",
+      meta: { costPerIndexCheck },
+    });
+
+    return res.json({ ok: true, settings: doc });
   } catch (err) {
     return next(err);
   }

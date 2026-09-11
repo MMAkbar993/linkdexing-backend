@@ -6,6 +6,8 @@ const {
   isAdmin,
   createAdmin,
   listAdmins,
+  getSettings,
+  updateSettings,
 } = require("./controller");
 const { login: loginLimiter } = require("../../../middleware/rateLimiters");
 
@@ -17,5 +19,10 @@ router.route("/admins").get(checkAuthStatus, isAdmin, listAdmins).post(
   isAdmin,
   createAdmin
 );
+
+router
+  .route("/settings")
+  .get(checkAuthStatus, isAdmin, getSettings)
+  .post(checkAuthStatus, isAdmin, updateSettings);
 
 module.exports = router;

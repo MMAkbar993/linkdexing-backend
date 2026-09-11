@@ -13,12 +13,16 @@ const creditTransactionSchema = new mongoose.Schema(
     },
     // Positive = credits added (purchase, admin grant, refund).
     // Negative = credits spent (link submission, index check, API usage).
+    // Usually a whole number (1 credit = 1 link submission), but index
+    // checks are priced per-URL in fractions of a credit, so this allows
+    // any non-zero amount. src/services/credits.js rounds to 2dp before
+    // writing, so values stay clean.
     amount: {
       required: true,
       type: Number,
       validate: {
-        validator: (v) => Number.isInteger(v) && v !== 0,
-        message: "amount must be a non-zero integer",
+        validator: (v) => Number.isFinite(v) && v !== 0,
+        message: "amount must be a non-zero number",
       },
     },
     // Balance immediately after this entry was applied. Lets the ledger be

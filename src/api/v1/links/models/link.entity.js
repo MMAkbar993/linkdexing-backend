@@ -38,6 +38,15 @@ const linkSchema = new mongoose.Schema(
       max: 31,
       min: 1,
     },
+    // Denormalized from the most recent IndexCheck for this link, so the
+    // Links Archive table can show status without joining the index-check
+    // collections. "not_checked" until the user runs a check at least once.
+    indexStatus: {
+      type: String,
+      enum: ["not_checked", "pending", "indexed", "not_indexed"],
+      default: "not_checked",
+    },
+    indexCheckedAt: { type: Date },
   },
   {
     timestamps: true,
