@@ -11,9 +11,14 @@ const IndexCheckBatch = require("../api/v1/indexcheck/models/indexCheckBatch.ent
 const IndexCheck = require("../api/v1/indexcheck/models/indexCheck.entity");
 const Link = require("../api/v1/links/models/link.entity");
 const indexChecker = require("./indexChecker");
+const credits = require("./credits");
 
 const POLL_INTERVAL_MS = 90 * 1000;
 const RESULT_MAP = { 1: "indexed", 0: "not_indexed", "-1": "pending" };
+// ~5 failed attempts (roughly 7-8 minutes at the interval above) before a
+// batch is given up on rather than retried forever - covers a transient
+// blip on their end without leaving a broken batch stuck "pending" indefinitely.
+const MAX_POLL_FAILURES = 5;
 
 let running = false;
 
@@ -31,15 +36,44 @@ async function pollOnce() {
       try {
         await applyProjectResult(batch);
       } catch (err) {
-        console.error(
-          `Index check poll failed for batch ${batch._id}:`,
-          err.message
-        );
+        await handlePollFailure(batch, err);
       }
     }
   } finally {
     running = false;
   }
+}
+
+async function handlePollFailure(batch, err) {
+  console.error(
+    `Index check poll failed for batch ${batch._id} (attempt ${
+      batch.pollFailures + 1
+    }/${MAX_POLL_FAILURES}):`,
+    err.message
+  );
+
+  batch.pollFailures += 1;
+
+  if (batch.pollFailures < MAX_POLL_FAILURES) {
+    await batch.save();
+    return;
+  }
+
+  // Given up - refund whatever's left uncounted and mark it failed, rather
+  // than silently retrying forever and leaving the user's credits gone with
+  // nothing to show for it.
+  batch.status = "failed";
+  batch.errorMessage =
+    "The index checking service stopped responding for this batch. Your credits were refunded.";
+  await batch.save();
+
+  await credits.credit(batch.userId, batch.creditsCharged, "refund", {
+    reason: `index check batch ${batch._id} gave up after repeated poll failures`,
+  });
+
+  console.error(
+    `Index check batch ${batch._id} gave up after ${MAX_POLL_FAILURES} failed polls - refunded ${batch.creditsCharged} credit(s).`
+  );
 }
 
 async function applyProjectResult(batch) {
@@ -86,6 +120,7 @@ async function applyProjectResult(batch) {
   batch.indexedCount = statistics.indexed;
   batch.notIndexedCount = statistics.not_indexed;
   batch.pendingCount = statistics.pending;
+  batch.pollFailures = 0; // a successful poll clears any prior failure streak
 
   if (statistics.pending === 0) {
     batch.status = "completed";

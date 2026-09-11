@@ -48,6 +48,10 @@ const indexCheckBatchSchema = new mongoose.Schema(
     // etc.) - the credits for a failed submission are refunded, and this is
     // shown to the user instead of leaving the batch stuck at "pending".
     errorMessage: { type: String },
+    // Consecutive failed poll attempts (indexCheckPoller.js) - reset to 0 on
+    // any successful poll. After too many in a row, the batch is given up
+    // on, marked failed, and refunded, rather than retrying forever.
+    pollFailures: { type: Number, default: 0 },
     completedAt: { type: Date },
   },
   { timestamps: true }
