@@ -211,28 +211,41 @@ exports.getSettings = async (req, res, next) => {
   }
 };
 
+const POSITIVE_NUMBER_FIELDS = {
+  costPerIndexCheck: "a non-negative number",
+  apiRateLimitPerMinute: "a positive whole number",
+  apiRateLimitPerDay: "a positive whole number",
+};
+
 exports.updateSettings = async (req, res, next) => {
   try {
-    const { costPerIndexCheck } = req.body;
+    const patch = {};
 
-    if (costPerIndexCheck !== undefined) {
-      if (!Number.isFinite(costPerIndexCheck) || costPerIndexCheck < 0) {
+    for (const field of Object.keys(POSITIVE_NUMBER_FIELDS)) {
+      const value = req.body[field];
+      if (value === undefined) continue;
+
+      const isRateLimit = field !== "costPerIndexCheck";
+      const valid = isRateLimit
+        ? Number.isInteger(value) && value >= 1
+        : Number.isFinite(value) && value >= 0;
+
+      if (!valid) {
         return res.status(400).json({
           ok: false,
-          message: "costPerIndexCheck must be a non-negative number",
+          message: `${field} must be ${POSITIVE_NUMBER_FIELDS[field]}`,
         });
       }
+      patch[field] = value;
     }
 
-    const doc = await settings.updateSettings({
-      ...(costPerIndexCheck !== undefined ? { costPerIndexCheck } : {}),
-    });
+    const doc = await settings.updateSettings(patch);
 
     await logAction({
       actorType: "admin",
       actorId: req.admin?.id,
       action: "settings.updated",
-      meta: { costPerIndexCheck },
+      meta: patch,
     });
 
     return res.json({ ok: true, settings: doc });

@@ -19,82 +19,89 @@ function parsePaging(query, defaultLimit) {
   return { page, limit, skip: (page - 1) * limit };
 }
 
-// Create order — one credit is spent per non-blank submitted link. The
-// order, the Link documents (one per URL — this is what later phases query
-// for per-URL index status) and the credit debit all happen in a single
+// Shared by the browser "Add Links" form and the developer API's /submit
+// endpoint - one credit is spent per non-blank URL, and the order, the Link
+// documents (one per URL) and the credit debit all happen in a single
 // transaction, so a failure partway through can't leave a user debited with
 // no order, or an order with no matching ledger entry.
-exports.createOrder = async (req, res, next) => {
-  const { links, dripfeed } = req.body;
-  const { id } = req.user;
-
+//
+// Returns { order, urls }. Throws credits.InsufficientCreditsError, or a
+// plain Error with .statusCode set for a validation failure - callers turn
+// that into the right HTTP response for their own response shape.
+async function submitLinks({ userId, links, dripfeed, transactionType = "link_submission" }) {
   const urls = (links || "")
     .split("\n")
     .map((url) => url.trim())
     .filter(Boolean);
 
   if (urls.length === 0) {
-    return res.status(400).json({
-      ok: false,
-      message: "At least one link is required",
-    });
+    const err = new Error("At least one link is required");
+    err.statusCode = 400;
+    throw err;
   }
 
   const invalid = urls.filter((url) => !URL_LIKE.test(url));
   if (invalid.length > 0) {
-    return res.status(400).json({
-      ok: false,
-      message: `Every line must be a full URL, starting with http://, https://, or www. (${invalid.length} line(s) didn't match)`,
-    });
+    const err = new Error(
+      `Every line must be a full URL, starting with http://, https://, or www. (${invalid.length} line(s) didn't match)`
+    );
+    err.statusCode = 400;
+    throw err;
   }
 
   const session = await mongoose.startSession();
-
   try {
     let order;
 
     await session.withTransaction(async () => {
-      [order] = await Order.create(
-        [{ userId: id, links, dripfeed }],
-        { session }
-      );
+      [order] = await Order.create([{ userId, links, dripfeed }], { session });
 
       await Link.insertMany(
-        urls.map((url) => ({
-          orderId: order._id,
-          userId: id,
-          url,
-          dripfeed,
-        })),
+        urls.map((url) => ({ orderId: order._id, userId, url, dripfeed })),
         { session }
       );
 
-      await credits.debit(id, urls.length, "link_submission", {
+      await credits.debit(userId, urls.length, transactionType, {
         reason: `order ${order._id}`,
         session,
       });
 
       await User.findByIdAndUpdate(
-        id,
+        userId,
         { $inc: { totalLinks: urls.length } },
         { session }
       );
     });
 
-    return res.status(201).json({
-      ok: true,
-      order,
+    return { order, urls };
+  } finally {
+    session.endSession();
+  }
+}
+
+exports.submitLinks = submitLinks;
+
+exports.createOrder = async (req, res, next) => {
+  const { links, dripfeed } = req.body;
+
+  try {
+    const { order, urls } = await submitLinks({
+      userId: req.user.id,
+      links,
+      dripfeed,
     });
+    return res.status(201).json({ ok: true, order, linksSubmitted: urls.length });
   } catch (err) {
     if (err instanceof credits.InsufficientCreditsError) {
       return res.status(err.statusCode).json({
         ok: false,
-        message: `Not enough credits. This submission needs ${urls.length} credits.`,
+        message: err.message,
       });
     }
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ ok: false, message: err.message });
+    }
     return next(err);
-  } finally {
-    session.endSession();
   }
 };
 

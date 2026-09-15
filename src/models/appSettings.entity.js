@@ -16,6 +16,18 @@ const appSettingsSchema = new mongoose.Schema(
       default: 0.1,
       min: 0,
     },
+    // Developer REST API (Feature 3) - applied per API key by
+    // src/middleware/apiKeyAuth.js.
+    apiRateLimitPerMinute: {
+      type: Number,
+      default: 60,
+      min: 1,
+    },
+    apiRateLimitPerDay: {
+      type: Number,
+      default: 1000,
+      min: 1,
+    },
   },
   { timestamps: true }
 );

@@ -55,6 +55,7 @@ app.use("/api/v1/orders", require("./src/api/v1/orders/routes"));
 app.use("/api/v1/admin", require("./src/api/v1/admin/routes"));
 app.use("/api/v1/payments", require("./src/api/v1/payments/routes"));
 app.use("/api/v1/index-check", require("./src/api/v1/indexcheck/routes"));
+app.use("/api/v1/dev", require("./src/api/v1/dev/routes"));
 
 app.use((err, req, res, next) => {
   if (res.statusCode === 200) {

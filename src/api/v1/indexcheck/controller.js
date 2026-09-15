@@ -112,6 +112,11 @@ async function createBatch({ userId, urls, source, orderId, linkIds }) {
   return batch;
 }
 
+// Exported so the developer API (src/api/v1/dev/controller.js) can create a
+// batch the same way the browser routes below do, rather than duplicating
+// the credit-charge-and-submit logic.
+exports.createBatch = createBatch;
+
 // Part B: standalone check of any URLs, textarea or CSV-derived.
 exports.checkStandalone = async (req, res, next) => {
   try {

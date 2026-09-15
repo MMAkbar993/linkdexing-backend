@@ -15,6 +15,18 @@ const credits = require("./credits");
 
 const POLL_INTERVAL_MS = 90 * 1000;
 const RESULT_MAP = { 1: "indexed", 0: "not_indexed", "-1": "pending" };
+
+// See the comment in applyProjectResult - undoes the two mangling forms
+// IndexChecker.link applies to URLs before matching them back to our rows.
+function normalizeUrl(url) {
+  return url
+    .toLowerCase()
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'");
+}
 // ~5 failed attempts (roughly 7-8 minutes at the interval above) before a
 // batch is given up on rather than retried forever - covers a transient
 // blip on their end without leaving a broken batch stuck "pending" indefinitely.
@@ -81,13 +93,24 @@ async function applyProjectResult(batch) {
     batch.externalProjectId
   );
 
+  // IndexChecker.link mangles URLs when it echoes results back, confirmed
+  // live against real batches: it lowercases the whole string ("...-CqxJ"
+  // comes back as "...-cqxj") and HTML-entity-encodes "&" in query strings
+  // ("&uid=1" comes back as "&amp;uid=1"). An exact-string lookup against
+  // what we submitted misses any URL with uppercase characters or multiple
+  // query params - both common. Normalize both sides before matching.
+  const urlsByKey = {};
+  for (const key of Object.keys(urls)) {
+    urlsByKey[normalizeUrl(key)] = urls[key];
+  }
+
   const checks = await IndexCheck.find({ batchId: batch._id });
 
   const bulkOps = [];
   const linkUpdates = []; // { linkId, indexStatus }
 
   for (const check of checks) {
-    const raw = urls[check.url];
+    const raw = urlsByKey[normalizeUrl(check.url)];
     const result = RESULT_MAP[String(raw)];
     if (!result || result === check.result) continue;
 
