@@ -1,7 +1,9 @@
 const mongoose = require("mongoose");
 const Payment = require("./models/payment.entity");
+const Coupon = require("../coupons/models/coupon.entity");
 const paypal = require("../../../services/paypal");
 const credits = require("../../../services/credits");
+const coupons = require("../../../services/coupons");
 const { logAction } = require("../../../services/audit");
 const { findPackage } = require("../../../config/creditPackages");
 
@@ -43,6 +45,22 @@ async function completePayment(payment, captureId, rawCapture) {
         session,
       });
       balance = result.balance;
+
+      // Only counted here, on an actually-completed payment - not at
+      // checkout start - so an abandoned cart never burns a limited-use
+      // coupon. This is why the redemption count/record don't exist yet
+      // when createOrder validated the same code.
+      if (payment.couponCode) {
+        const coupon = await Coupon.findOne({ code: payment.couponCode }).session(session);
+        if (coupon) {
+          await coupons.redeemCoupon(coupon, {
+            userId: payment.userId,
+            paymentId: payment._id,
+            discountAmount: payment.discountAmount || 0,
+            session,
+          });
+        }
+      }
     });
 
     await logAction({
@@ -63,7 +81,7 @@ async function completePayment(payment, captureId, rawCapture) {
 // the package's credit count — a client can never supply its own price.
 exports.createOrder = async (req, res, next) => {
   try {
-    const { credits: creditsRequested } = req.body;
+    const { credits: creditsRequested, couponCode } = req.body;
     const pkg = findPackage(creditsRequested);
 
     if (!pkg) {
@@ -73,6 +91,30 @@ exports.createOrder = async (req, res, next) => {
       });
     }
 
+    // A coupon code is re-validated here from scratch - the discount amount
+    // the buy-credits page showed via POST /coupons/validate is never
+    // trusted, only the code itself.
+    let amount = pkg.price;
+    let discountAmount = 0;
+    let appliedCouponCode;
+
+    if (couponCode) {
+      try {
+        const result = await coupons.validateCoupon(couponCode, {
+          userId: req.user.id,
+          price: pkg.price,
+        });
+        amount = result.finalPrice;
+        discountAmount = result.discountAmount;
+        appliedCouponCode = result.coupon.code;
+      } catch (err) {
+        if (err instanceof coupons.CouponError) {
+          return res.status(err.statusCode || 400).json({ ok: false, message: err.message });
+        }
+        throw err;
+      }
+    }
+
     // Pre-generate the id so PayPal's order can reference our record from
     // the start, then insert the Payment once we know PayPal's order id too
     // — this avoids ever writing a placeholder value into the unique
@@ -80,7 +122,7 @@ exports.createOrder = async (req, res, next) => {
     const paymentId = new mongoose.Types.ObjectId();
 
     const order = await paypal.createOrder({
-      amount: pkg.price,
+      amount,
       currency: "USD",
       referenceId: paymentId.toString(),
     });
@@ -90,7 +132,10 @@ exports.createOrder = async (req, res, next) => {
       userId: req.user.id,
       userEmail: req.user.email,
       paypalOrderId: order.id,
-      amount: pkg.price,
+      amount,
+      originalAmount: pkg.price,
+      discountAmount,
+      couponCode: appliedCouponCode,
       currency: "USD",
       credits: pkg.credits,
       bonusCredits: pkg.bonus || 0,
@@ -101,6 +146,8 @@ exports.createOrder = async (req, res, next) => {
       ok: true,
       paypalOrderId: order.id,
       paymentId: payment._id,
+      amount,
+      discountAmount,
     });
   } catch (err) {
     return next(err);
