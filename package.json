@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "nodemon app.js"
+    "start": "node api.js && node app.js",
+    "dev": "node api.js && nodemon app.js"
   },
   "repository": {
     "type": "git",
@@ -39,6 +39,6 @@
     "nodemon": "^2.0.7"
   },
   "engines": {
-  "node": "20.x"
-}
+    "node": "20.x"
+  }
 }

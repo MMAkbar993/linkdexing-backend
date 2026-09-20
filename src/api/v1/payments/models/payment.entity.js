@@ -31,9 +31,25 @@ const paymentSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
+    // The amount actually charged - after any coupon discount.
     amount: {
       required: true,
       type: Number,
+    },
+    // The package's list price before a coupon discount, so the discount is
+    // still visible on this record even after the coupon itself changes.
+    // Equal to `amount` when no coupon was used.
+    originalAmount: {
+      type: Number,
+    },
+    discountAmount: {
+      type: Number,
+      default: 0,
+    },
+    couponCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
     },
     currency: {
       type: String,
